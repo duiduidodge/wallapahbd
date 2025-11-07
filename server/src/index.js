@@ -176,11 +176,11 @@ app.use((err, _req, res, _next) => {
   res.status(500).json({ error: 'ระบบขัดข้อง กรุณาลองใหม่อีกครั้ง' });
 });
 
-// For Vercel serverless functions, export the app
-// For local development, start the server
-if (process.env.VERCEL) {
-  module.exports = app;
-} else {
+// Export for Vercel serverless functions
+module.exports = app;
+
+// Start server for local development (only if not imported as module)
+if (require.main === module) {
   app.listen(PORT, () => {
     console.log(`Birthday wishes API listening on port ${PORT}`);
     if (process.env.NODE_ENV === 'production') {
