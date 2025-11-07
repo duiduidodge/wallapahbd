@@ -151,17 +151,6 @@ app.post('/api/wishes', postLimiter, upload.single('image'), async (req, res, ne
   }
 });
 
-// Serve static frontend files (only in production)
-if (process.env.NODE_ENV === 'production') {
-  const clientBuildPath = path.join(__dirname, '..', '..', 'client', 'dist');
-  app.use(express.static(clientBuildPath));
-
-  // Handle client-side routing - must be after API routes
-  app.get('*', (req, res) => {
-    res.sendFile(path.join(clientBuildPath, 'index.html'));
-  });
-}
-
 app.use((err, _req, res, _next) => {
   console.error(err);
   if (err instanceof multer.MulterError) {
