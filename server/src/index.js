@@ -17,7 +17,10 @@ const MAX_FILE_SIZE_MB = 2;
 const MAX_FILE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
 const ALLOWED_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 
-fs.mkdirSync(uploadsDir, { recursive: true });
+// Only create directories if not on Vercel (filesystem is read-only)
+if (!process.env.VERCEL) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
 
 const app = express();
 
