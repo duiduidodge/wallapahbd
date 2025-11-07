@@ -3,6 +3,7 @@ const { nanoid } = require('nanoid');
 const formidable = require('formidable');
 const fs = require('fs');
 const path = require('path');
+const { put } = require('@vercel/blob');
 const { addWish, readWishes } = require('../src/wishStore');
 
 const MAX_FILE_SIZE_MB = 2;
@@ -35,7 +36,8 @@ const runMiddleware = (req, res, fn) => {
 
 const formatWishForResponse = (wish) => ({
   ...wish,
-  imageUrl: wish.imageFileName ? `/api/uploads/${wish.imageFileName}` : null
+  // For backward compatibility: support both old imageFileName and new imageUrl
+  imageUrl: wish.imageUrl || (wish.imageFileName ? `/api/uploads/${wish.imageFileName}` : null)
 });
 
 // Parse form data with file upload
@@ -100,14 +102,25 @@ module.exports = async (req, res) => {
         return res.status(400).json({ error: 'กรุณาเขียนข้อความตั้งแต่ 1 ถึง 500 ตัวอักษร' });
       }
 
-      let imageFileName = null;
+      let imageUrl = null;
       if (files.image) {
         const imageFile = Array.isArray(files.image) ? files.image[0] : files.image;
         if (imageFile) {
-          const ext = path.extname(imageFile.originalFilename || '') || '';
-          imageFileName = `${Date.now()}-${nanoid()}${ext}`;
-          const newPath = path.join('/tmp', 'uploads', imageFileName);
-          fs.renameSync(imageFile.filepath, newPath);
+          // Read the file from temp location
+          const fileBuffer = fs.readFileSync(imageFile.filepath);
+          const ext = path.extname(imageFile.originalFilename || '') || '.jpg';
+          const filename = `wishes/${Date.now()}-${nanoid()}${ext}`;
+
+          // Upload to Vercel Blob
+          const blob = await put(filename, fileBuffer, {
+            access: 'public',
+            contentType: imageFile.mimetype
+          });
+
+          imageUrl = blob.url;
+
+          // Clean up temp file
+          fs.unlinkSync(imageFile.filepath);
         }
       }
 
@@ -116,7 +129,7 @@ module.exports = async (req, res) => {
         name,
         message,
         createdAt: new Date().toISOString(),
-        imageFileName
+        imageUrl
       };
 
       await addWish(wish);
