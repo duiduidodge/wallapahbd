@@ -1,8 +1,6 @@
 const cors = require('cors');
 const { nanoid } = require('nanoid');
-const formidable = require('formidable');
-const fs = require('fs');
-const path = require('path');
+const Busboy = require('busboy');
 const { put } = require('@vercel/blob');
 // Use memory store for Vercel (filesystem is ephemeral), file store for local dev
 const store = process.env.VERCEL
@@ -44,31 +42,56 @@ const formatWishForResponse = (wish) => ({
   imageUrl: wish.imageUrl || (wish.imageFileName ? `/api/uploads/${wish.imageFileName}` : null)
 });
 
-// Parse form data with file upload
+// Parse form data with file upload using busboy
 const parseForm = (req) => {
   return new Promise((resolve, reject) => {
-    const uploadsDir = path.join('/tmp', 'uploads');
+    const busboy = Busboy({ headers: req.headers });
+    const fields = {};
+    const files = {};
 
-    // Ensure upload directory exists
-    if (!fs.existsSync(uploadsDir)) {
-      fs.mkdirSync(uploadsDir, { recursive: true });
-    }
-
-    const form = formidable({
-      uploadDir: uploadsDir,
-      keepExtensions: true,
-      maxFileSize: MAX_FILE_BYTES,
-      filter: ({ mimetype }) => {
-        return ALLOWED_IMAGE_TYPES.has(mimetype);
-      }
+    busboy.on('field', (fieldname, value) => {
+      fields[fieldname] = value;
     });
 
-    form.parse(req, (err, fields, files) => {
-      if (err) {
-        return reject(err);
+    busboy.on('file', (fieldname, fileStream, info) => {
+      const { filename, mimeType } = info;
+
+      // Validate file type
+      if (!ALLOWED_IMAGE_TYPES.has(mimeType)) {
+        fileStream.resume(); // Drain the stream
+        return reject(new Error('รองรับเฉพาะไฟล์ JPG, PNG หรือ WEBP เท่านั้น'));
       }
+
+      // Collect file data in memory
+      const chunks = [];
+      let size = 0;
+
+      fileStream.on('data', (chunk) => {
+        size += chunk.length;
+        if (size > MAX_FILE_BYTES) {
+          fileStream.resume(); // Drain the stream
+          return reject(new Error(`ไฟล์ต้องไม่เกิน ${MAX_FILE_SIZE_MB}MB`));
+        }
+        chunks.push(chunk);
+      });
+
+      fileStream.on('end', () => {
+        files[fieldname] = {
+          buffer: Buffer.concat(chunks),
+          filename,
+          mimeType,
+          size
+        };
+      });
+    });
+
+    busboy.on('finish', () => {
       resolve({ fields, files });
     });
+
+    busboy.on('error', reject);
+
+    req.pipe(busboy);
   });
 };
 
@@ -97,8 +120,8 @@ module.exports = async (req, res) => {
       const { fields, files } = await parseForm(req);
       console.log('POST /api/wishes - form parsed', { fields, files: Object.keys(files || {}) });
 
-      const name = (Array.isArray(fields.name) ? fields.name[0] : fields.name || '').trim();
-      const message = (Array.isArray(fields.message) ? fields.message[0] : fields.message || '').trim();
+      const name = (fields.name || '').trim();
+      const message = (fields.message || '').trim();
 
       if (!name || name.length > 60) {
         return res.status(400).json({ error: 'กรุณาใส่ชื่อไม่เกิน 60 ตัวอักษร' });
@@ -109,51 +132,32 @@ module.exports = async (req, res) => {
       }
 
       let imageUrl = null;
-      let imageFileName = null;
 
       if (files.image) {
-        const imageFile = Array.isArray(files.image) ? files.image[0] : files.image;
-        if (imageFile) {
-          const ext = path.extname(imageFile.originalFilename || '') || '.jpg';
-          const filename = `wishes/${Date.now()}-${nanoid()}${ext}`;
+        const imageFile = files.image;
+        const ext = imageFile.filename.includes('.')
+          ? '.' + imageFile.filename.split('.').pop()
+          : '.jpg';
+        const filename = `wishes/${Date.now()}-${nanoid()}${ext}`;
 
-          // Try to use Vercel Blob if available (has token)
-          if (process.env.BLOB_READ_WRITE_TOKEN) {
-            try {
-              const fileBuffer = fs.readFileSync(imageFile.filepath);
+        // Try to use Vercel Blob if available (has token)
+        if (process.env.BLOB_READ_WRITE_TOKEN) {
+          try {
+            console.log('Uploading to Vercel Blob...');
+            // Upload to Vercel Blob
+            const blob = await put(filename, imageFile.buffer, {
+              access: 'public',
+              contentType: imageFile.mimeType
+            });
 
-              // Upload to Vercel Blob
-              const blob = await put(filename, fileBuffer, {
-                access: 'public',
-                contentType: imageFile.mimetype
-              });
-
-              imageUrl = blob.url;
-
-              // Clean up temp file
-              fs.unlinkSync(imageFile.filepath);
-            } catch (blobError) {
-              console.error('Vercel Blob upload failed, falling back to /tmp:', blobError);
-              // Fall back to /tmp storage
-              const uploadsDir = path.join('/tmp', 'uploads');
-              if (!fs.existsSync(uploadsDir)) {
-                fs.mkdirSync(uploadsDir, { recursive: true });
-              }
-              imageFileName = `${Date.now()}-${nanoid()}${ext}`;
-              const newPath = path.join(uploadsDir, imageFileName);
-              fs.renameSync(imageFile.filepath, newPath);
-            }
-          } else {
-            // No Blob token, use /tmp storage
-            console.log('No BLOB_READ_WRITE_TOKEN, using /tmp storage');
-            const uploadsDir = path.join('/tmp', 'uploads');
-            if (!fs.existsSync(uploadsDir)) {
-              fs.mkdirSync(uploadsDir, { recursive: true });
-            }
-            imageFileName = `${Date.now()}-${nanoid()}${ext}`;
-            const newPath = path.join(uploadsDir, imageFileName);
-            fs.renameSync(imageFile.filepath, newPath);
+            imageUrl = blob.url;
+            console.log('Uploaded to Blob successfully:', imageUrl);
+          } catch (blobError) {
+            console.error('Vercel Blob upload failed:', blobError);
+            // For now, just log the error - images won't be stored without Blob
           }
+        } else {
+          console.log('No BLOB_READ_WRITE_TOKEN - image upload skipped');
         }
       }
 
@@ -162,8 +166,7 @@ module.exports = async (req, res) => {
         name,
         message,
         createdAt: new Date().toISOString(),
-        imageUrl,
-        imageFileName  // For backward compatibility with /tmp storage
+        imageUrl
       };
 
       console.log('POST /api/wishes - adding wish', wish);
