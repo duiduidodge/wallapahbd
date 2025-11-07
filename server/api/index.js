@@ -1,21 +1,26 @@
 let handler;
+let initError;
 
-try {
-  const serverlessExpress = require('@vendia/serverless-express');
-  const app = require('../src/index');
+// Lazy initialization - only load modules when function is first invoked
+module.exports = async (req, res) => {
+  if (!handler && !initError) {
+    try {
+      const serverlessExpress = require('@vendia/serverless-express');
+      const app = require('../src/index');
+      handler = serverlessExpress({ app });
+    } catch (error) {
+      console.error('Error initializing Express app:', error);
+      initError = error;
+    }
+  }
 
-  // Create the serverless handler
-  handler = serverlessExpress({ app });
-} catch (error) {
-  console.error('Error initializing Express app:', error);
-  // Fallback handler that returns the error
-  handler = (req, res) => {
-    res.status(500).json({
+  if (initError) {
+    return res.status(500).json({
       error: 'Failed to initialize Express app',
-      message: error.message,
-      stack: error.stack
+      message: initError.message,
+      stack: initError.stack
     });
-  };
-}
+  }
 
-module.exports = handler;
+  return handler(req, res);
+};
