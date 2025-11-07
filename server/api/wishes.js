@@ -4,7 +4,11 @@ const formidable = require('formidable');
 const fs = require('fs');
 const path = require('path');
 const { put } = require('@vercel/blob');
-const { addWish, readWishes } = require('../src/wishStore');
+// Use memory store for Vercel (filesystem is ephemeral), file store for local dev
+const store = process.env.VERCEL
+  ? require('../src/memoryStore')
+  : require('../src/wishStore');
+const { addWish, readWishes } = store;
 
 const MAX_FILE_SIZE_MB = 2;
 const MAX_FILE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
@@ -89,7 +93,9 @@ module.exports = async (req, res) => {
 
   if (req.method === 'POST') {
     try {
+      console.log('POST /api/wishes - starting form parse');
       const { fields, files } = await parseForm(req);
+      console.log('POST /api/wishes - form parsed', { fields, files: Object.keys(files || {}) });
 
       const name = (Array.isArray(fields.name) ? fields.name[0] : fields.name || '').trim();
       const message = (Array.isArray(fields.message) ? fields.message[0] : fields.message || '').trim();
@@ -160,7 +166,9 @@ module.exports = async (req, res) => {
         imageFileName  // For backward compatibility with /tmp storage
       };
 
+      console.log('POST /api/wishes - adding wish', wish);
       await addWish(wish);
+      console.log('POST /api/wishes - wish added successfully');
       return res.status(201).json({ wish: formatWishForResponse(wish) });
     } catch (error) {
       console.error('POST /api/wishes error:', error);
