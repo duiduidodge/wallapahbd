@@ -103,24 +103,51 @@ module.exports = async (req, res) => {
       }
 
       let imageUrl = null;
+      let imageFileName = null;
+
       if (files.image) {
         const imageFile = Array.isArray(files.image) ? files.image[0] : files.image;
         if (imageFile) {
-          // Read the file from temp location
-          const fileBuffer = fs.readFileSync(imageFile.filepath);
           const ext = path.extname(imageFile.originalFilename || '') || '.jpg';
           const filename = `wishes/${Date.now()}-${nanoid()}${ext}`;
 
-          // Upload to Vercel Blob
-          const blob = await put(filename, fileBuffer, {
-            access: 'public',
-            contentType: imageFile.mimetype
-          });
+          // Try to use Vercel Blob if available (has token)
+          if (process.env.BLOB_READ_WRITE_TOKEN) {
+            try {
+              const fileBuffer = fs.readFileSync(imageFile.filepath);
 
-          imageUrl = blob.url;
+              // Upload to Vercel Blob
+              const blob = await put(filename, fileBuffer, {
+                access: 'public',
+                contentType: imageFile.mimetype
+              });
 
-          // Clean up temp file
-          fs.unlinkSync(imageFile.filepath);
+              imageUrl = blob.url;
+
+              // Clean up temp file
+              fs.unlinkSync(imageFile.filepath);
+            } catch (blobError) {
+              console.error('Vercel Blob upload failed, falling back to /tmp:', blobError);
+              // Fall back to /tmp storage
+              const uploadsDir = path.join('/tmp', 'uploads');
+              if (!fs.existsSync(uploadsDir)) {
+                fs.mkdirSync(uploadsDir, { recursive: true });
+              }
+              imageFileName = `${Date.now()}-${nanoid()}${ext}`;
+              const newPath = path.join(uploadsDir, imageFileName);
+              fs.renameSync(imageFile.filepath, newPath);
+            }
+          } else {
+            // No Blob token, use /tmp storage
+            console.log('No BLOB_READ_WRITE_TOKEN, using /tmp storage');
+            const uploadsDir = path.join('/tmp', 'uploads');
+            if (!fs.existsSync(uploadsDir)) {
+              fs.mkdirSync(uploadsDir, { recursive: true });
+            }
+            imageFileName = `${Date.now()}-${nanoid()}${ext}`;
+            const newPath = path.join(uploadsDir, imageFileName);
+            fs.renameSync(imageFile.filepath, newPath);
+          }
         }
       }
 
@@ -129,17 +156,25 @@ module.exports = async (req, res) => {
         name,
         message,
         createdAt: new Date().toISOString(),
-        imageUrl
+        imageUrl,
+        imageFileName  // For backward compatibility with /tmp storage
       };
 
       await addWish(wish);
       return res.status(201).json({ wish: formatWishForResponse(wish) });
     } catch (error) {
-      console.error(error);
+      console.error('POST /api/wishes error:', error);
       if (error.code === 'LIMIT_FILE_SIZE') {
         return res.status(400).json({ error: `ไฟล์ต้องไม่เกิน ${MAX_FILE_SIZE_MB}MB` });
       }
-      return res.status(500).json({ error: 'ระบบขัดข้อง กรุณาลองใหม่อีกครั้ง' });
+      // Return detailed error in development
+      const errorMessage = process.env.NODE_ENV === 'development'
+        ? `${error.message} (${error.code || 'unknown'})`
+        : 'ระบบขัดข้อง กรุณาลองใหม่อีกครั้ง';
+      return res.status(500).json({
+        error: errorMessage,
+        details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+      });
     }
   }
 
