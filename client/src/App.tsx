@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import './App.css'
-import { WishForm, WishWall, HeroStats, PhotoGallery } from './components'
+import { WishForm, WishWall } from './components'
 
 type Wish = {
   id: string

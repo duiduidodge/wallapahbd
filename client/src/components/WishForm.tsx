@@ -1,4 +1,4 @@
-import { useState, useRef, memo, useEffect } from 'react'
+import { useState, useRef, memo } from 'react'
 import type { ChangeEvent, FormEvent } from 'react'
 
 const MAX_NAME_LENGTH = 60
