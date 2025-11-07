@@ -21,7 +21,17 @@ const app = express();
 // Enable compression for all responses
 app.use(compression());
 
-app.use(cors());
+// Configure CORS to allow frontend domain
+app.use(cors({
+  origin: [
+    'https://wallapahbd.vercel.app',
+    'http://localhost:5173',
+    'http://localhost:4173'
+  ],
+  credentials: true,
+  methods: ['GET', 'POST', 'OPTIONS'],
+  allowedHeaders: ['Content-Type']
+}));
 app.use(express.json());
 
 // Cache static files for 1 day
