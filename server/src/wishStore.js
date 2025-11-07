@@ -1,7 +1,10 @@
 const fs = require('fs/promises');
 const path = require('path');
 
-const dataDir = path.join(__dirname, '..', 'data');
+// Use /tmp for Vercel serverless, local data dir for development
+const dataDir = process.env.VERCEL
+  ? path.join('/tmp', 'data')
+  : path.join(__dirname, '..', 'data');
 const wishesFile = path.join(dataDir, 'wishes.json');
 
 async function ensureDataFile() {

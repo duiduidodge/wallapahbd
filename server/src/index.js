@@ -9,7 +9,10 @@ const { nanoid } = require('nanoid');
 const { addWish, readWishes } = require('./wishStore');
 
 const PORT = process.env.PORT || 4000;
-const uploadsDir = path.join(__dirname, '..', 'uploads');
+// Use /tmp for Vercel serverless, local uploads dir for development
+const uploadsDir = process.env.VERCEL
+  ? path.join('/tmp', 'uploads')
+  : path.join(__dirname, '..', 'uploads');
 const MAX_FILE_SIZE_MB = 2;
 const MAX_FILE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
 const ALLOWED_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
