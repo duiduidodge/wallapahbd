@@ -175,7 +175,7 @@ export const WishForm = memo(({ onWishAdded, apiBaseUrl }: WishFormProps) => {
             name="message"
             maxLength={MAX_MESSAGE_LENGTH}
             rows={4}
-            placeholder="บอกให้วาลภารู้ว่าเธอพิเศษแค่ไหน"
+            placeholder="บอกให้วัลลภารู้ว่าเธอพิเศษแค่ไหน"
             value={formState.message}
             onChange={(event) =>
               setFormState((prev) => ({

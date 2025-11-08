@@ -99,7 +99,7 @@ function App() {
 
   const wishCountMessage = useMemo(() => {
     if (!wishes.length) {
-      return 'มาเป็นคนแรกที่ฝากคำอวยพรให้วาลภานะ'
+      return 'มาเป็นคนแรกที่ฝากคำอวยพรให้วัลลภานะ'
     }
     if (wishes.length === 1) {
       return 'ตอนนี้มี 1 ข้อความมาร่วมฉลองแล้ว'
@@ -154,7 +154,7 @@ function App() {
 
       <div className="app-shell">
         <header className="hero">
-          <p className="eyebrow">วันนี้เป็นวันพิเศษของวาลภา</p>
+          <p className="eyebrow">วันนี้เป็นวันพิเศษของวัลลภา</p>
           <h1>
             Happy Birthday
             <span className="alias-line">
