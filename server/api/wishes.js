@@ -61,11 +61,14 @@ const parseForm = (req) => {
       fields[fieldname] = value;
     });
 
+    let hasError = false;
+
     busboy.on('file', (fieldname, fileStream, info) => {
       const { filename, mimeType } = info;
 
       // Validate file type
       if (!ALLOWED_IMAGE_TYPES.has(mimeType)) {
+        hasError = true;
         fileStream.resume(); // Drain the stream
         return reject(new Error('รองรับเฉพาะไฟล์ JPG, PNG หรือ WEBP เท่านั้น'));
       }
@@ -73,10 +76,17 @@ const parseForm = (req) => {
       // Collect file data in memory
       const chunks = [];
       let size = 0;
+      let sizeExceeded = false;
 
       fileStream.on('data', (chunk) => {
+        if (sizeExceeded || hasError) {
+          return; // Don't process more data if already failed
+        }
+
         size += chunk.length;
         if (size > MAX_FILE_BYTES) {
+          sizeExceeded = true;
+          hasError = true;
           fileStream.resume(); // Drain the stream
           return reject(new Error(`ไฟล์ต้องไม่เกิน ${MAX_FILE_SIZE_MB}MB`));
         }
@@ -84,12 +94,19 @@ const parseForm = (req) => {
       });
 
       fileStream.on('end', () => {
-        files[fieldname] = {
-          buffer: Buffer.concat(chunks),
-          filename,
-          mimeType,
-          size
-        };
+        if (!hasError && !sizeExceeded && chunks.length > 0) {
+          files[fieldname] = {
+            buffer: Buffer.concat(chunks),
+            filename,
+            mimeType,
+            size
+          };
+        }
+      });
+
+      fileStream.on('error', (err) => {
+        hasError = true;
+        reject(err);
       });
     });
 

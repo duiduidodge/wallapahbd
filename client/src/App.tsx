@@ -49,7 +49,15 @@ function App() {
   useEffect(() => {
     const fetchWishes = async () => {
       try {
-        const response = await fetch(`${API_BASE_URL}/api/wishes`)
+        const controller = new AbortController()
+        const timeoutId = setTimeout(() => controller.abort(), 10000) // 10 second timeout
+
+        const response = await fetch(`${API_BASE_URL}/api/wishes`, {
+          signal: controller.signal
+        })
+
+        clearTimeout(timeoutId)
+
         if (!response.ok) {
           throw new Error('Unable to fetch wishes')
         }
@@ -58,7 +66,11 @@ function App() {
         setWishes(normalized)
       } catch (err) {
         console.error(err)
-        setError('โหลดบอร์ดอวยพรไม่สำเร็จ กรุณารีเฟรชหน้านี้อีกครั้งนะ')
+        if (err instanceof Error && err.name === 'AbortError') {
+          setError('โหลดข้อมูลใช้เวลานานเกินไป กรุณารีเฟรชหน้านี้')
+        } else {
+          setError('โหลดบอร์ดอวยพรไม่สำเร็จ กรุณารีเฟรชหน้านี้อีกครั้งนะ')
+        }
       } finally {
         setLoading(false)
       }

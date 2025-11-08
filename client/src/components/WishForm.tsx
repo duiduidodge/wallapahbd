@@ -85,10 +85,17 @@ export const WishForm = memo(({ onWishAdded, apiBaseUrl }: WishFormProps) => {
         formData.append('image', selectedFile)
       }
 
+      // Add timeout to prevent hanging requests
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 30000) // 30 second timeout
+
       const response = await fetch(`${apiBaseUrl}/api/wishes`, {
         method: 'POST',
-        body: formData
+        body: formData,
+        signal: controller.signal
       })
+
+      clearTimeout(timeoutId)
 
       const payload = await response.json()
       if (!response.ok) {
@@ -100,12 +107,21 @@ export const WishForm = memo(({ onWishAdded, apiBaseUrl }: WishFormProps) => {
       handleRemoveImage()
       setSuccessMessage('ขอบคุณ! เราโพสต์คำอวยพรของคุณเรียบร้อยแล้ว')
       setShowConfetti(true)
-      setTimeout(() => setShowConfetti(false), 3000)
+      setTimeout(() => {
+        setShowConfetti(false)
+        setSuccessMessage(null)
+      }, 5000)
     } catch (err) {
       console.error(err)
-      setError(
-        err instanceof Error ? err.message : 'ส่งคำอวยพรไม่สำเร็จ กรุณาลองใหม่อีกครั้ง'
-      )
+      if (err instanceof Error && err.name === 'AbortError') {
+        setError('คำขอใช้เวลานานเกินไป กรุณาลองใหม่อีกครั้ง')
+      } else {
+        setError(
+          err instanceof Error ? err.message : 'ส่งคำอวยพรไม่สำเร็จ กรุณาลองใหม่อีกครั้ง'
+        )
+      }
+      // Auto-clear error after 8 seconds
+      setTimeout(() => setError(null), 8000)
     } finally {
       setSubmitting(false)
     }
