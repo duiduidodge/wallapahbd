@@ -2,10 +2,18 @@ const cors = require('cors');
 const { nanoid } = require('nanoid');
 const Busboy = require('busboy');
 const { put } = require('@vercel/blob');
-// Use memory store for Vercel (filesystem is ephemeral), file store for local dev
-const store = process.env.VERCEL
-  ? require('../src/memoryStore')
-  : require('../src/wishStore');
+// Use KV store if available (persistent), otherwise memory store (ephemeral) or file store (local)
+let store;
+if (process.env.KV_REST_API_URL) {
+  // Vercel KV is configured - use persistent storage
+  store = require('../src/kvStore');
+} else if (process.env.VERCEL) {
+  // On Vercel but no KV - use ephemeral memory
+  store = require('../src/memoryStore');
+} else {
+  // Local development - use file storage
+  store = require('../src/wishStore');
+}
 const { addWish, readWishes } = store;
 
 const MAX_FILE_SIZE_MB = 2;
